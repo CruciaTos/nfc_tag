@@ -102,22 +102,32 @@ class _ShareScreenState extends State<ShareScreen>
         ],
       ),
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
-            child: FadeTransition(
-              opacity: _fade,
-              child: SlideTransition(
-                position: _slide,
-                child: ScaleTransition(
-                  scale: _scale,
-                  child: profile.isEmpty
-                      ? _EmptyState(onSetUp: _openEditProfile)
-                      : _ShareCard(profile: profile),
+        child: Column(
+          children: [
+            Container(
+              height: 1,
+              color: Colors.white.withOpacity(0.08),
+            ),
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
+                  child: FadeTransition(
+                    opacity: _fade,
+                    child: SlideTransition(
+                      position: _slide,
+                      child: ScaleTransition(
+                        scale: _scale,
+                        child: profile.isEmpty
+                            ? _EmptyState(onSetUp: _openEditProfile)
+                            : _ShareCard(profile: profile),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -259,28 +269,13 @@ class _SingleShareCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isWhatsApp = link?.platform == LinkPlatform.whatsapp;
-
     return _GradientWindowCard(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Name – ExtraBold
-          Text(
-            profile.fullName.isEmpty ? 'Your Name' : profile.fullName,
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          if (profile.tagline.trim().isNotEmpty) ...[
-            const SizedBox(height: 8),
-            // Tagline / Role – Light, 60% opacity
+          // Tagline first (top)
+          if (profile.tagline.trim().isNotEmpty)
             Text(
               profile.tagline.trim(),
               style: TextStyle(
@@ -292,41 +287,28 @@ class _SingleShareCard extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-          ],
+          const SizedBox(height: 8),
+          // Name second (bottom)
+          Text(
+            profile.fullName.isEmpty ? 'Your Name' : profile.fullName,
+            style: const TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
           const SizedBox(height: 20),
           if (link != null) _QrCard(link: link!),
           const SizedBox(height: 14),
-          // Platform label with monochrome icon – SemiBold
           if (link != null)
             _PlatformLabel(platform: link!.displayLabel),
           if (link != null) ...[
             const SizedBox(height: 4),
-            // Handle – Medium, 70% opacity, with phone icon for WhatsApp
-            if (isWhatsApp)
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.call_outlined,
-                    size: 18,
-                    color: Colors.white70,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    link!.displayValue,
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white.withOpacity(0.70),
-                    ),
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              )
-            else
-              Text(
+            Center(
+              child: Text(
                 link!.displayValue,
                 style: TextStyle(
                   fontSize: 17,
@@ -337,6 +319,7 @@ class _SingleShareCard extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
+            ),
           ] else
             const Text(
               'Scan to connect',
@@ -353,47 +336,22 @@ class _SingleShareCard extends StatelessWidget {
   }
 }
 
-/// Renders a platform name with a monochrome icon.
+/// Displays the platform name as centered text.
 class _PlatformLabel extends StatelessWidget {
   final String platform;
   const _PlatformLabel({required this.platform});
 
-  static IconData _iconFor(String platform) {
-    switch (platform.toLowerCase()) {
-      case 'instagram':
-        return Icons.camera_alt_outlined;
-      case 'whatsapp':
-        return Icons.chat_bubble_outline;
-      case 'twitter':
-      case 'x':
-        return Icons.alternate_email;
-      case 'linkedin':
-        return Icons.work_outline;
-      case 'youtube':
-        return Icons.play_circle_outline;
-      case 'facebook':
-        return Icons.facebook;
-      default:
-        return Icons.link;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(_iconFor(platform), size: 20, color: Colors.white70),
-        const SizedBox(width: 6),
-        Text(
-          platform,
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
+    return Center(
+      child: Text(
+        platform,
+        style: const TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
         ),
-      ],
+      ),
     );
   }
 }
@@ -478,7 +436,7 @@ class _GradientWindowCard extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Grid overlay – subtle network of lines
+// Grid overlay
 // ---------------------------------------------------------------------------
 
 class _GridOverlay extends StatefulWidget {
@@ -530,7 +488,7 @@ class _GridPainter extends CustomPainter {
 }
 
 // ---------------------------------------------------------------------------
-// Noise overlay – almost invisible monochrome noise
+// Noise overlay
 // ---------------------------------------------------------------------------
 
 class _NoiseOverlay extends StatefulWidget {
@@ -582,7 +540,7 @@ class _NoisePainter extends CustomPainter {
 }
 
 // ---------------------------------------------------------------------------
-// QR card – solid white, no gaps
+// QR card
 // ---------------------------------------------------------------------------
 
 class _QrCard extends StatelessWidget {
@@ -608,6 +566,13 @@ class _QrCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(_cardRadius),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 12,
+                offset: const Offset(0, 6),
+              ),
+            ],
           ),
           child: QrImageView(
             data: link.toUrl(),
@@ -630,7 +595,7 @@ class _QrCard extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Modern page indicator – active dash, inactive dots
+// Modern page indicator
 // ---------------------------------------------------------------------------
 
 class _ModernPageIndicator extends StatelessWidget {
@@ -647,12 +612,21 @@ class _ModernPageIndicator extends StatelessWidget {
         return AnimatedContainer(
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOut,
-          margin: const EdgeInsets.symmetric(horizontal: 3),
-          width: isActive ? 16 : 4,
-          height: 4,
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          width: isActive ? 20 : 6,
+          height: 6,
           decoration: BoxDecoration(
-            color: isActive ? Colors.white : Colors.white.withOpacity(0.3),
-            borderRadius: BorderRadius.circular(2),
+            color: isActive ? Colors.white : Colors.white.withOpacity(0.4),
+            borderRadius: BorderRadius.circular(3),
+            boxShadow: isActive
+                ? [
+                    BoxShadow(
+                      color: Colors.white.withOpacity(0.5),
+                      blurRadius: 4,
+                      spreadRadius: 1,
+                    )
+                  ]
+                : null,
           ),
         );
       }),
