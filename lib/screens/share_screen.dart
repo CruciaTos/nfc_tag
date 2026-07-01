@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../models/profile.dart';
 import '../theme/app_theme.dart';
-import '../widgets/glass_card.dart';
 import '../widgets/grainient_background.dart';
 import 'edit_profile_screen.dart';
 
@@ -86,7 +85,8 @@ class _ShareScreenState extends State<ShareScreen>
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
-        title: const SizedBox.shrink(),
+        centerTitle: true,
+        title: const _BrandMark(),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12, top: 4),
@@ -121,6 +121,51 @@ class _ShareScreenState extends State<ShareScreen>
   }
 }
 
+/// The company wordmark shown at the top of the Share screen — a sleek,
+/// Dynamic Island‑style pill that carries the brand lockup with quiet
+/// confidence.
+class _BrandMark extends StatelessWidget {
+  const _BrandMark();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: RichText(
+        textAlign: TextAlign.center,
+        text: TextSpan(
+          children: [
+            TextSpan(
+              text: 'DZEN',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 3,
+                height: 1,
+                color: Colors.white.withOpacity(0.92),
+              ),
+            ),
+            TextSpan(
+              text: '  SVAYATTA',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 2.5,
+                height: 1,
+                color: Colors.white.withOpacity(0.92),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ShareCard extends StatefulWidget {
   final Profile profile;
 
@@ -132,24 +177,48 @@ class _ShareCard extends StatefulWidget {
 
 class _ShareCardState extends State<_ShareCard> {
   late final PageController _pageController;
-  int _currentIndex = 0;
+  late int _currentIndex;
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(viewportFraction: 1.0);
+    _currentIndex = _defaultIndexFor(widget.profile);
+    _pageController = PageController(
+      viewportFraction: 1.0,
+      initialPage: _currentIndex,
+    );
     _syncColors();
+  }
+
+  /// The carousel page to open on, based on the user's chosen Startup QR
+  /// (Profile.defaultLinkId). Falls back to the first card (index 0) when
+  /// no default is set or the saved id no longer matches a saved link —
+  /// this is the pre-existing behavior, left untouched as the fallback.
+  int _defaultIndexFor(Profile profile) {
+    final links = profile.validLinks;
+    if (links.isEmpty) return 0;
+    final defaultId = profile.defaultLinkId;
+    if (defaultId == null) return 0;
+    final index = links.indexWhere((l) => l.id == defaultId);
+    return index == -1 ? 0 : index;
   }
 
   @override
   void didUpdateWidget(covariant _ShareCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Profile changed (e.g. returned from Edit) — re-sync colors
-    // and clamp the page index in case a link was removed.
     if (oldWidget.profile != widget.profile) {
       final links = widget.profile.validLinks;
       if (_currentIndex >= links.length) {
         setState(() => _currentIndex = 0);
+      }
+      if (oldWidget.profile.defaultLinkId != widget.profile.defaultLinkId) {
+        final target = _defaultIndexFor(widget.profile);
+        if (target != _currentIndex) {
+          setState(() => _currentIndex = target);
+          if (_pageController.hasClients) {
+            _pageController.jumpToPage(target);
+          }
+        }
       }
       _syncColors();
     }
@@ -161,17 +230,11 @@ class _ShareCardState extends State<_ShareCard> {
     super.dispose();
   }
 
-  /// Updates the global [GrainientBackground.colorNotifier] with the
-  /// platform colors of the current link. Uses a post‑frame callback to
-  /// avoid mutating the notifier during a build, which previously caused
-  /// "setState() or markNeedsBuild() called during build" errors.
   void _syncColors() {
     final links = widget.profile.validLinks;
     final platform = links.isNotEmpty && _currentIndex < links.length
         ? links[_currentIndex].platform
         : null;
-    // Always defer to after the frame to guarantee no listener triggers
-    // a rebuild mid‑build.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       GrainientBackground.colorNotifier.value =
           backgroundColorsForPlatform(platform);
@@ -182,8 +245,6 @@ class _ShareCardState extends State<_ShareCard> {
   Widget build(BuildContext context) {
     final links = widget.profile.validLinks;
 
-    // No links yet but name/tagline exist: still show one static card
-    // (no carousel needed for a single, link-less state).
     if (links.isEmpty) {
       return _SingleShareCard(
         profile: widget.profile,
@@ -192,8 +253,6 @@ class _ShareCardState extends State<_ShareCard> {
       );
     }
 
-    // Exactly one link: same single static card, just with that link's QR.
-    // A carousel with one page swiping nowhere would be a pointless gesture.
     if (links.length == 1) {
       return _SingleShareCard(
         profile: widget.profile,
@@ -202,14 +261,7 @@ class _ShareCardState extends State<_ShareCard> {
       );
     }
 
-    // Multiple links: the ENTIRE card — name, tagline, QR, label, all of
-    // it — becomes one page per link, and the whole physical card slides
-    // as a unit when swiped. This is the actual carousel.
     return SizedBox(
-      // A fixed height is required here: PageView needs a bounded height
-      // to lay out its pages, and since each page is now a full card
-      // (variable height depending on tagline presence, etc.), this picks
-      // a height generous enough for the tallest realistic card.
       height: 560,
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -242,10 +294,6 @@ class _ShareCardState extends State<_ShareCard> {
   }
 }
 
-/// One complete share card: name, tagline, QR, and label — everything
-/// together as a single physical unit. When used inside the carousel,
-/// the whole thing is one page that slides; outside the carousel
-/// (zero or one link), it's just the static card.
 class _SingleShareCard extends StatelessWidget {
   final Profile profile;
   final LinkEntry? link;
@@ -259,8 +307,13 @@ class _SingleShareCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlassCard(
+    // Solid black container replaces GlassCard
+    return Container(
       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 44),
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -296,21 +349,12 @@ class _SingleShareCard extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
           ],
-          const SizedBox(height: 4),
-          Text(
-            showSwipeHint ? 'Swipe for more' : 'Scan to connect',
-            style: Theme.of(context).textTheme.bodyMedium,
-            textAlign: TextAlign.center,
-          ),
         ],
       ),
     );
   }
 }
 
-/// A single QR card — pure black on white, no color, no glow tint.
-/// The link's real URL (instagram.com/... or wa.me/...) is encoded
-/// directly, so any standard camera app opens it on scan.
 class _QrCard extends StatelessWidget {
   final LinkEntry link;
 
@@ -392,8 +436,13 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlassCard(
+    // Solid black container replaces GlassCard
+    return Container(
       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

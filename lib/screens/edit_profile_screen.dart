@@ -1,5 +1,8 @@
 import 'dart:io';
+import 'dart:async';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/profile.dart';
@@ -28,16 +31,48 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late final TextEditingController _taglineController;
   late List<LinkEntry> _links;
   String? _photoPath;
+  String? _defaultLinkId;
   bool _isPickingImage = false;
-  int _nextId = 0;
+
+  List<LinkEntry> _normalizeLinkIds(List<LinkEntry> links) {
+    final normalized = <LinkEntry>[];
+    final seenIds = <String>{};
+
+    for (final link in links) {
+      var safeId = link.id.trim();
+      if (safeId.isEmpty || seenIds.contains(safeId)) {
+        var candidate = 0;
+        while (seenIds.contains('link_$candidate')) {
+          candidate++;
+        }
+        safeId = 'link_$candidate';
+      }
+
+      seenIds.add(safeId);
+      normalized.add(LinkEntry(
+        id: safeId,
+        platform: link.platform,
+        value: link.value,
+        label: link.label,
+      ));
+    }
+
+    return normalized;
+  }
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.profile.fullName);
     _taglineController = TextEditingController(text: widget.profile.tagline);
-    _links = List.of(widget.profile.links);
+    _links = _normalizeLinkIds(List.of(widget.profile.links));
     _photoPath = widget.profile.photoPath;
+    _defaultLinkId = widget.profile.defaultLinkId;
+
+    if (_defaultLinkId != null &&
+        !_links.any((link) => link.id == _defaultLinkId)) {
+      _defaultLinkId = null;
+    }
   }
 
   @override
@@ -47,12 +82,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
+  List<LinkEntry> get _validLinks => _links.where((l) => l.isValid).toList();
+
   Profile _buildProfile() {
+    final validIds = _validLinks.map((l) => l.id).toSet();
     return Profile(
       fullName: _nameController.text.trim(),
       tagline: _taglineController.text.trim(),
       photoPath: _photoPath,
       links: _links,
+      // Drop a stale default (e.g. its link was removed this session)
+      // rather than persisting an id that no longer resolves to anything —
+      // Profile.defaultLink already falls back gracefully, but there's no
+      // reason to save a dangling reference when we can clean it up here.
+      defaultLinkId:
+          validIds.contains(_defaultLinkId) ? _defaultLinkId : null,
     );
   }
 
@@ -88,6 +132,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
+  String _nextLinkId() {
+    final existingIds = _links.map((link) => link.id).toSet();
+    var candidate = 0;
+    while (existingIds.contains('link_$candidate')) {
+      candidate++;
+    }
+    return 'link_$candidate';
+  }
+
   Future<void> _addLink() async {
     final newLink = await showModalBottomSheet<LinkEntry>(
       context: context,
@@ -96,7 +149,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      builder: (context) => _AddLinkSheet(id: 'link_${_nextId++}'),
+      builder: (context) => _AddLinkSheet(id: _nextLinkId()),
     );
     if (newLink != null) {
       setState(() => _links.add(newLink));
@@ -104,7 +157,37 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   void _removeLink(String id) {
-    setState(() => _links.removeWhere((l) => l.id == id));
+    setState(() {
+      _links.removeWhere((l) => l.id == id);
+      // The default can't point at a link that no longer exists — clear
+      // it so the section reverts to "Automatic" rather than showing a
+      // selection that silently vanished.
+      if (_defaultLinkId == id) {
+        _defaultLinkId = null;
+      }
+    });
+  }
+
+  /// Toggling entry point for setting the Startup QR directly from a link
+  /// row (double-tap or 3s hold) — picking the already-selected link again
+  /// clears it, reverting to "Automatic" (first saved link), since there's
+  /// no separate section anymore to explicitly choose that fallback.
+  void _handleSetDefault(String id) {
+    final wasDefault = _defaultLinkId == id;
+    setState(() => _defaultLinkId = wasDefault ? null : id);
+    HapticFeedback.mediumImpact();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 2),
+          content: Text(
+            wasDefault
+                ? 'Startup QR cleared — using the first link automatically'
+                : 'Set as your Startup QR',
+          ),
+        ),
+      );
   }
 
   void _save() {
@@ -169,6 +252,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
               ),
+              const SizedBox(height: 4),
+              if (_links.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    '',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
               const SizedBox(height: 12),
               if (_links.isEmpty)
                 Padding(
@@ -181,10 +273,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               else
                 ..._links.map(
                   (link) => Padding(
+                    key: ValueKey(link.id),
                     padding: const EdgeInsets.only(bottom: 10),
                     child: _LinkRow(
+                      key: ValueKey(link.id),
                       link: link,
+                      isDefault: link.id == _defaultLinkId,
                       onRemove: () => _removeLink(link.id),
+                      onSetDefault: () => _handleSetDefault(link.id),
                     ),
                   ),
                 ),
@@ -220,50 +316,140 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
 /// One saved link in the editable list — shows its platform icon, value,
 /// and a remove button. Pure black-and-white, no platform brand colors.
-class _LinkRow extends StatelessWidget {
+///
+/// Doubles as the Startup QR picker: double-tapping or holding the
+/// icon/label area for 3 seconds sets (or, if already set, clears) this
+/// link as the one shown first on launch. The remove (×) button sits
+/// outside that gesture area so it's never accidentally caught by it.
+class _LinkRow extends StatefulWidget {
   final LinkEntry link;
+  final bool isDefault;
   final VoidCallback onRemove;
+  final VoidCallback onSetDefault;
 
-  const _LinkRow({required this.link, required this.onRemove});
+  const _LinkRow({
+    Key? key,
+    required this.link,
+    required this.isDefault,
+    required this.onRemove,
+    required this.onSetDefault,
+  }) : super(key: key);
+
+  @override
+  State<_LinkRow> createState() => _LinkRowState();
+}
+
+class _LinkRowState extends State<_LinkRow> {
+  static const _holdDuration = Duration(seconds: 3);
+
+  Timer? _holdTimer;
+  bool _isHolding = false;
+
+  void _startHold() {
+    _holdTimer?.cancel();
+    setState(() => _isHolding = true);
+    _holdTimer = Timer(_holdDuration, () {
+      if (!mounted) return;
+      setState(() => _isHolding = false);
+      widget.onSetDefault();
+    });
+  }
+
+  // Fires on a normal tap-up/tap-cancel/scroll-steal — anything short of
+  // completing the full 3s hold — so a quick tap on the row does nothing.
+  void _cancelHold() {
+    _holdTimer?.cancel();
+    _holdTimer = null;
+    if (_isHolding) setState(() => _isHolding = false);
+  }
+
+  @override
+  void dispose() {
+    _holdTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final icon = link.platform == LinkPlatform.instagram
+    final icon = widget.link.platform == LinkPlatform.instagram
         ? Icons.camera_alt_outlined
         : Icons.chat_bubble_outline_rounded;
 
-    return GlassCard(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      radius: AppTheme.radiusSmall,
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.white, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  link.displayLabel,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
+        border: widget.isDefault
+            ? Border.all(color: Colors.white, width: 1.5)
+            : Border.all(color: Colors.transparent, width: 1.5),
+      ),
+      child: GlassCard(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        radius: AppTheme.radiusSmall,
+        child: Row(
+          children: [
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onDoubleTap: widget.onSetDefault,
+                onTapDown: (_) => _startHold(),
+                onTapUp: (_) => _cancelHold(),
+                onTapCancel: _cancelHold,
+                child: AnimatedScale(
+                  scale: _isHolding ? 0.97 : 1.0,
+                  duration: const Duration(milliseconds: 150),
+                  child: Row(
+                    children: [
+                      Icon(icon, color: Colors.white, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    widget.link.displayLabel,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (widget.isDefault) ...[
+                                  const SizedBox(width: 6),
+                                  const Icon(
+                                    Icons.bolt_rounded,
+                                    size: 15,
+                                    color: Colors.white,
+                                  ),
+                                ],
+                              ],
+                            ),
+                            Text(
+                              widget.link.displayValue,
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.5),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                Text(
-                  link.displayValue,
-                  style: TextStyle(color: Colors.white.withOpacity(0.5)),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+              ),
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.close_rounded, size: 20),
-            color: Colors.white.withOpacity(0.6),
-            onPressed: onRemove,
-          ),
-        ],
+            IconButton(
+              icon: const Icon(Icons.close_rounded, size: 20),
+              color: Colors.white.withOpacity(0.6),
+              onPressed: widget.onRemove,
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -62,9 +62,8 @@ flutter:
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  assets:
+    - assets/fonts/zaslia/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
@@ -91,3 +90,10 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+  # Zaslia is the app's global typeface, applied via AppTheme.theme
+  # (fontFamily: 'Zaslia') rather than widget-by-widget.
+  fonts:
+    - family: Zaslia
+      fonts:
+        - asset: assets/fonts/zaslia/Zaslia.otf

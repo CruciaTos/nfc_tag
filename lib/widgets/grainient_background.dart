@@ -17,13 +17,12 @@ List<Color> backgroundColorsForPlatform(LinkPlatform? platform) {
   }
 }
 
-/// A fluid animated background: three gradient blobs moving on
-/// non-repeating Lissajous paths, with animated film grain on top,
-/// and smooth color transitions when the platform changes.
+/// A fluid animated background: wavy ribbons with a single blurred layer,
+/// base gradient, animated film grain, and smooth colour transitions.
 ///
-/// Platform colors are driven by [colorNotifier] — ShareScreen writes
+/// Platform colours are driven by [colorNotifier] — ShareScreen writes
 /// to it when the visible QR card changes; the background listens and
-/// cross-fades to the new palette over ~900ms.
+/// cross‑fades to the new palette over ~900ms.
 class GrainientBackground extends StatefulWidget {
   static final colorNotifier = ValueNotifier<List<Color>>(
     backgroundColorsForPlatform(null),
@@ -37,11 +36,7 @@ class GrainientBackground extends StatefulWidget {
 
 class _GrainientBackgroundState extends State<GrainientBackground>
     with TickerProviderStateMixin {
-  // Drives all three blob positions — one continuous loop.
   late final AnimationController _blobController;
-
-  // Drives color cross-fade when the platform changes.
-  // Runs once (0→1) on each platform switch, then idles.
   late final AnimationController _colorController;
 
   List<Color> _fromColors = backgroundColorsForPlatform(null);
@@ -68,8 +63,6 @@ class _GrainientBackgroundState extends State<GrainientBackground>
     _toColors = GrainientBackground.colorNotifier.value;
     GrainientBackground.colorNotifier.addListener(_onColorsChanged);
 
-    // Grain refreshes at ~10fps — fast enough to read as motion,
-    // slow enough not to spike the GPU behind every screen constantly.
     _grainTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
       if (!mounted) return;
       setState(() => _grainSeed = Random().nextInt(0xFFFFF));
@@ -77,10 +70,8 @@ class _GrainientBackgroundState extends State<GrainientBackground>
   }
 
   void _onColorsChanged() {
-    // Snapshot wherever we currently are mid-transition so the new
-    // cross-fade always starts from the actual rendered state, not
-    // from a stale "from" value if the user swipes quickly.
-    final snapshot = _lerpColors(_fromColors, _toColors, _colorController.value);
+    final snapshot =
+        _lerpColors(_fromColors, _toColors, _colorController.value);
     setState(() {
       _fromColors = snapshot;
       _toColors = GrainientBackground.colorNotifier.value;
@@ -111,7 +102,6 @@ class _GrainientBackgroundState extends State<GrainientBackground>
 
   @override
   Widget build(BuildContext context) {
-    // FIXED: corrected AnimatedBuilder → AnimatedBuilder (the standard widget)
     return AnimatedBuilder(
       animation: Listenable.merge([_blobController, _colorController]),
       builder: (context, _) => CustomPaint(
@@ -137,105 +127,138 @@ class _GrainientPainter extends CustomPainter {
     required this.grainSeed,
   });
 
-  // Irrational frequency ratios — golden ratio, √2, √3.
-  // These ensure the three blobs never fall back into a visible
-  // repeating pattern relative to each other over normal usage time.
-  static const _phi  = 1.6180339887; // golden ratio
-  static const _sq2  = 1.4142135623; // √2
-  static const _sq3  = 1.7320508075; // √3
-
   @override
   void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
     final rect = Offset.zero & size;
-
-    canvas.drawRect(rect, Paint()..color = Colors.black);
-
     final c0 = colors[0];
     final c1 = colors.length > 1 ? colors[1] : colors[0];
-    final cMid = Color.lerp(c0, c1, 0.5)!;
 
-    // --- Blob 0 ---
-    // Large, slow. Primary color.
-    // Path: two cosine terms on x, two sine on y, using t and φt.
-    // The offset phases (1.0, 0.7) ensure the path isn't axis-aligned.
-    _blob(canvas, size, rect,
-      x: w * (0.5 + 0.38 * cos(t)           + 0.14 * cos(_phi * t + 1.0)),
-      y: h * (0.42 + 0.26 * sin(t)           + 0.10 * sin(_sq2  * t + 0.7)),
-      radiusPx: w * 0.82,
-      color: c0.withOpacity(0.38),
-    );
-
-    // --- Blob 1 ---
-    // Medium. Secondary color. Drifts counter to blob 0 (phase shift of 2.1).
-    // Uses φt and √3t — irrational relative to blob 0's t and √2t.
-    _blob(canvas, size, rect,
-      x: w * (0.5 + 0.30 * cos(_phi * t + 2.1) + 0.18 * cos(_sq3 * t)),
-      y: h * (0.62 + 0.30 * sin(_sq2  * t + 1.4) + 0.12 * sin(t   + 2.5)),
-      radiusPx: w * 0.68,
-      color: c1.withOpacity(0.30),
-    );
-
-    // --- Blob 2 ---
-    // Smaller, fastest path. Blended color. Uses √3t and √2t — both
-    // irrational relative to each other and the two blobs above.
-    _blob(canvas, size, rect,
-      x: w * (0.5 + 0.22 * cos(_sq3 * t + 3.7) + 0.16 * cos(_sq2  * t + 1.2)),
-      y: h * (0.5 + 0.24 * sin(_phi * t + 0.9) + 0.14 * sin(_sq3  * t + 3.1)),
-      radiusPx: w * 0.54,
-      color: cMid.withOpacity(0.22),
-    );
-
-    // Film grain — three passes at increasing opacity, decreasing density.
-    // Only the seed changes (at ~10fps via timer), not the point count.
-    final rng = Random(grainSeed);
-    _grain(canvas, size, rng, opacity: 0.022, count: 700);
-    _grain(canvas, size, rng, opacity: 0.048, count: 380);
-    _grain(canvas, size, rng, opacity: 0.085, count: 150);
-  }
-
-  void _blob(
-    Canvas canvas,
-    Size size,
-    Rect rect, {
-    required double x,
-    required double y,
-    required double radiusPx,
-    required Color color,
-  }) {
-    // Convert pixel center to normalized Alignment space (-1..1),
-    // and pixel radius to RadialGradient's "fraction of shorter side" units.
-    final shorter = min(size.width, size.height);
+    // 1. Base gradient – ensures no black is visible
     canvas.drawRect(
       rect,
       Paint()
-        ..shader = RadialGradient(
-          center: Alignment(
-            (x / size.width)  * 2 - 1,
-            (y / size.height) * 2 - 1,
-          ),
-          colors: [color, Colors.transparent],
-          radius: radiusPx / shorter,
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [c0, c1],
         ).createShader(rect),
     );
+
+    // 2. Blue grid (behind white grid)
+    _drawBlueGrid(canvas, size);
+
+    // 3. White grid
+    _drawGrid(canvas, size);
+
+    // 4. All ribbons drawn together into a single blurred layer
+    _drawRibbonsWithSharedBlur(canvas, size, c0, c1);
+
+    // 5. Film grain (light performance hit, kept as-is)
+    final rng = Random(grainSeed);
+    _grain(canvas, size, rng, opacity: 0.022, count: 500);   // slightly reduced
+    _grain(canvas, size, rng, opacity: 0.048, count: 250);
+    _grain(canvas, size, rng, opacity: 0.085, count: 100);
+  }
+
+  /// Draws all wavy ribbons inside a [saveLayer] and applies a single blur
+  /// to the whole layer. This is **much** cheaper than blurring each ribbon.
+  void _drawRibbonsWithSharedBlur(Canvas canvas, Size size, Color c0, Color c1) {
+    final layerPaint = Paint()
+      ..imageFilter = ImageFilter.blur(sigmaX: 28, sigmaY: 28, tileMode: TileMode.clamp);
+    canvas.saveLayer(Offset.zero & size, layerPaint);
+
+    // Draw 5 thick, high‑opacity ribbons without any per‑ribbon blur
+    const int ribbonCount = 5;
+    for (int i = 0; i < ribbonCount; i++) {
+      final double yFrac = 0.05 + (i / (ribbonCount - 1)) * 0.9;
+      final Color ribbonColor = Color.lerp(c0, c1, yFrac)!;
+      final double amplitude = size.height * 0.18;  // bigger waves because fewer ribbons
+      final double freq1 = 0.007 + 0.01 * sin(yFrac * 2.4);
+      final double freq2 = 0.005 + 0.012 * cos(yFrac * 3.1);
+
+      _ribbonPath(canvas, size, ribbonColor, yFrac, amplitude, freq1, freq2);
+    }
+
+    canvas.restore();
+  }
+
+  /// Draws a single ribbon **without** any blur – the whole layer will be blurred.
+  void _ribbonPath(
+    Canvas canvas,
+    Size size,
+    Color color,
+    double baseYRatio,
+    double amplitude,
+    double freq1,
+    double freq2,
+  ) {
+    final path = Path();
+    final double baseY = size.height * baseYRatio;
+
+    // Step of 8 – with the layer blur this remains smooth
+    for (double x = 0; x <= size.width; x += 8) {
+      final y = baseY +
+          amplitude * sin(x * freq1 + t * 0.7) +
+          amplitude * 0.6 * cos(x * freq2 + t * 1.3);
+      if (x == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+
+    // High opacity, thick stroke – the layer blur softens it
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color.withOpacity(0.85)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 120
+        ..strokeCap = StrokeCap.round,
+      // No maskFilter here – blur is applied by the saveLayer
+    );
+  }
+
+  void _drawBlueGrid(Canvas canvas, Size size) {
+    const spacing = 60.0;
+    final paint = Paint()
+      ..color = Colors.blue.withOpacity(0.10)
+      ..strokeWidth = 0.5;
+    for (double x = 0; x < size.width; x += spacing) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+    for (double y = 0; y < size.height; y += spacing) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  void _drawGrid(Canvas canvas, Size size) {
+    const spacing = 40.0;
+    final paint = Paint()
+      ..color = Colors.white.withOpacity(0.05)
+      ..strokeWidth = 0.5;
+    for (double x = 0; x < size.width; x += spacing) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+    for (double y = 0; y < size.height; y += spacing) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
   }
 
   void _grain(Canvas canvas, Size size, Random rng,
       {required double opacity, required int count}) {
-    canvas.drawPoints(
-      PointMode.points,
-      List.generate(
-        count,
-        (_) => Offset(rng.nextDouble() * size.width, rng.nextDouble() * size.height),
-      ),
-      Paint()
-        ..color = Colors.white.withOpacity(opacity)
-        ..strokeWidth = 1.1,
-    );
+    final paint = Paint()
+      ..color = Colors.white.withOpacity(opacity)
+      ..strokeWidth = 1.1;
+    for (int i = 0; i < count; i++) {
+      canvas.drawPoints(
+        PointMode.points,
+        [Offset(rng.nextDouble() * size.width, rng.nextDouble() * size.height)],
+        paint,
+      );
+    }
   }
 
-  // Always repaint — the blob position changes every frame from _blobController.
   @override
   bool shouldRepaint(covariant _GrainientPainter old) => true;
 }

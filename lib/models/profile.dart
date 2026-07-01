@@ -107,11 +107,18 @@ class Profile {
   final String? photoPath;
   final List<LinkEntry> links;
 
+  /// The [LinkEntry.id] the user picked as their "Startup QR" — the card
+  /// shown first on launch, before any swiping. Null means no explicit
+  /// choice has been made yet, in which case callers fall back to the
+  /// first valid link (the pre-existing default behavior).
+  final String? defaultLinkId;
+
   const Profile({
     this.fullName = '',
     this.tagline = '',
     this.photoPath,
     this.links = const [],
+    this.defaultLinkId,
   });
 
   bool get isEmpty =>
@@ -119,17 +126,33 @@ class Profile {
 
   List<LinkEntry> get validLinks => links.where((l) => l.isValid).toList();
 
+  /// The link the app should open to, resolved against [validLinks].
+  /// Falls back to the first valid link (or null, if there are none)
+  /// whenever no default is set or the saved id no longer matches an
+  /// existing link — e.g. it was deleted after being chosen.
+  LinkEntry? get defaultLink {
+    final links = validLinks;
+    if (links.isEmpty) return null;
+    if (defaultLinkId == null) return links.first;
+    return links.firstWhere(
+      (l) => l.id == defaultLinkId,
+      orElse: () => links.first,
+    );
+  }
+
   Profile copyWith({
     String? fullName,
     String? tagline,
     String? photoPath,
     List<LinkEntry>? links,
+    String? defaultLinkId,
   }) {
     return Profile(
       fullName: fullName ?? this.fullName,
       tagline: tagline ?? this.tagline,
       photoPath: photoPath ?? this.photoPath,
       links: links ?? this.links,
+      defaultLinkId: defaultLinkId ?? this.defaultLinkId,
     );
   }
 
@@ -138,6 +161,7 @@ class Profile {
         'tagline': tagline,
         'photoPath': photoPath,
         'links': links.map((l) => l.toJson()).toList(),
+        'defaultLinkId': defaultLinkId,
       };
 
   factory Profile.fromJson(Map<String, dynamic> json) {
@@ -149,6 +173,7 @@ class Profile {
       links: rawLinks
           .map((e) => LinkEntry.fromJson(e as Map<String, dynamic>))
           .toList(),
+      defaultLinkId: json['defaultLinkId'] as String?,
     );
   }
 }

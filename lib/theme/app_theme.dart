@@ -20,6 +20,14 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
+      // Global app typeface. Setting it here — rather than passing a
+      // fontFamily to individual TextStyles — makes every screen use
+      // Zaslia by default, including text that reads its style straight
+      // off the theme (textTheme.*) and any inline TextStyle that
+      // doesn't set its own fontFamily, since those merge against the
+      // ambient DefaultTextStyle this produces. Backed by the `Zaslia`
+      // family declared in pubspec.yaml.
+      fontFamily: 'Zaslia',
       // Transparent so the global GrainientBackground in MaterialApp.builder
       // shows through — an opaque color here would paint over it entirely.
       scaffoldBackgroundColor: Colors.transparent,
