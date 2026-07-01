@@ -25,3 +25,9 @@ doc/api/
 
 .flutter-plugins
 .flutter-plugins-dependencies
+/android
+/ios
+/.idea
+/macos
+/windows
+/web
