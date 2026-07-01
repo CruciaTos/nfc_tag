@@ -4,16 +4,20 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../models/profile.dart';
 
-/// Returns the two-color gradient palette for a given platform.
-/// These are called by ShareScreen when the active card changes.
+/// Returns the gradient palette for a given platform.
+/// Instagram now uses three colours: pink → purple → yellow.
 List<Color> backgroundColorsForPlatform(LinkPlatform? platform) {
   switch (platform) {
     case LinkPlatform.instagram:
-      return const [Color(0xFFD62976), Color(0xFF833AB4)]; // pink → purple
+      return const [
+        Color(0xFFD62976), // pink
+        Color.fromARGB(255, 160, 58, 180), // purple
+        Color.fromARGB(255, 89, 0, 255), // yellow
+      ];
     case LinkPlatform.whatsapp:
-      return const [Color(0xFF00A884), Color(0xFF075E54)]; // bright green → deep teal
+      return const [Color(0xFF00A884), Color(0xFF075E54)];
     case null:
-      return const [Color(0xFFCCCCCC), Color(0xFF444444)]; // neutral white/gray
+      return const [Color(0xFFCCCCCC), Color(0xFF444444)];
   }
 }
 
@@ -79,6 +83,8 @@ class _GrainientBackgroundState extends State<GrainientBackground>
     _colorController.forward(from: 0);
   }
 
+  /// Interpolates between two colour lists. If they differ in length,
+  /// the missing indices use the last available colour.
   static List<Color> _lerpColors(List<Color> from, List<Color> to, double t) {
     final len = max(from.length, to.length);
     return List.generate(len, (i) {
@@ -121,28 +127,41 @@ class _GrainientPainter extends CustomPainter {
   final List<Color> colors;
   final int grainSeed;
 
+  /// Optional centre and radius of the card glow.
+  /// When `null`, the painter uses the canvas centre and a default radius.
+  final Offset? cardCenter;
+  final double? cardRadius;
+
   const _GrainientPainter({
     required this.t,
     required this.colors,
     required this.grainSeed,
+    this.cardCenter,
+    this.cardRadius,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
-    final c0 = colors[0];
-    final c1 = colors.length > 1 ? colors[1] : colors[0];
 
-    // 1. Base gradient – ensures no black is visible
+    // Compute glow parameters (default if not supplied)
+    final Offset center = cardCenter ?? Offset(size.width / 2, size.height / 2);
+    final double radius = cardRadius ?? min(size.width, size.height) * 0.35;
+
+    // 1. Base gradient – supports 2, 3 (or more) colours
+    final baseGradient = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: colors,
+      stops: _generateStops(colors.length),
+    );
     canvas.drawRect(
       rect,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [c0, c1],
-        ).createShader(rect),
+      Paint()..shader = baseGradient.createShader(rect),
     );
+
+    // ---- Soft glow behind the card ----
+    _drawSoftGlow(canvas, center, radius);
 
     // 2. Blue grid (behind white grid)
     _drawBlueGrid(canvas, size);
@@ -151,28 +170,60 @@ class _GrainientPainter extends CustomPainter {
     _drawGrid(canvas, size);
 
     // 4. All ribbons drawn together into a single blurred layer
-    _drawRibbonsWithSharedBlur(canvas, size, c0, c1);
+    _drawRibbonsWithSharedBlur(canvas, size);
 
-    // 5. Film grain (light performance hit, kept as-is)
+    // 5. Film grain
     final rng = Random(grainSeed);
-    _grain(canvas, size, rng, opacity: 0.022, count: 500);   // slightly reduced
+    _grain(canvas, size, rng, opacity: 0.022, count: 500);
     _grain(canvas, size, rng, opacity: 0.048, count: 250);
     _grain(canvas, size, rng, opacity: 0.085, count: 100);
   }
 
+  /// Draws a soft, blurred white circle as a glow behind the card.
+  void _drawSoftGlow(Canvas canvas, Offset center, double radius) {
+    final glowPaint = Paint()
+      ..color = Colors.white.withOpacity(0.12)   // subtle brightness
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 45); // soft spread
+    canvas.drawCircle(center, radius, glowPaint);
+  }
+
+  /// Creates evenly spaced stops for a given number of colours.
+  List<double>? _generateStops(int count) {
+    if (count <= 1) return null;
+    return List.generate(count, (i) => i / (count - 1));
+  }
+
+  /// Returns the colour at a fraction (0…1) along a multi‑stop gradient.
+  Color _colorAtFraction(double fraction) {
+    if (colors.isEmpty) return Colors.transparent;
+    if (colors.length == 1) return colors.first;
+
+    // Clamp
+    fraction = fraction.clamp(0.0, 1.0);
+
+    // Find the two surrounding stops
+    final double step = 1.0 / (colors.length - 1);
+    final int lowerIndex = (fraction / step).floor();
+    final int upperIndex = lowerIndex + 1;
+
+    if (upperIndex >= colors.length) return colors.last;
+
+    final double localT = (fraction - lowerIndex * step) / step;
+    return Color.lerp(colors[lowerIndex], colors[upperIndex], localT)!;
+  }
+
   /// Draws all wavy ribbons inside a [saveLayer] and applies a single blur
-  /// to the whole layer. This is **much** cheaper than blurring each ribbon.
-  void _drawRibbonsWithSharedBlur(Canvas canvas, Size size, Color c0, Color c1) {
+  /// to the whole layer.
+  void _drawRibbonsWithSharedBlur(Canvas canvas, Size size) {
     final layerPaint = Paint()
       ..imageFilter = ImageFilter.blur(sigmaX: 28, sigmaY: 28, tileMode: TileMode.clamp);
     canvas.saveLayer(Offset.zero & size, layerPaint);
 
-    // Draw 5 thick, high‑opacity ribbons without any per‑ribbon blur
     const int ribbonCount = 5;
     for (int i = 0; i < ribbonCount; i++) {
       final double yFrac = 0.05 + (i / (ribbonCount - 1)) * 0.9;
-      final Color ribbonColor = Color.lerp(c0, c1, yFrac)!;
-      final double amplitude = size.height * 0.18;  // bigger waves because fewer ribbons
+      final Color ribbonColor = _colorAtFraction(yFrac);
+      final double amplitude = size.height * 0.18;
       final double freq1 = 0.007 + 0.01 * sin(yFrac * 2.4);
       final double freq2 = 0.005 + 0.012 * cos(yFrac * 3.1);
 
@@ -182,7 +233,6 @@ class _GrainientPainter extends CustomPainter {
     canvas.restore();
   }
 
-  /// Draws a single ribbon **without** any blur – the whole layer will be blurred.
   void _ribbonPath(
     Canvas canvas,
     Size size,
@@ -195,7 +245,6 @@ class _GrainientPainter extends CustomPainter {
     final path = Path();
     final double baseY = size.height * baseYRatio;
 
-    // Step of 8 – with the layer blur this remains smooth
     for (double x = 0; x <= size.width; x += 8) {
       final y = baseY +
           amplitude * sin(x * freq1 + t * 0.7) +
@@ -207,7 +256,6 @@ class _GrainientPainter extends CustomPainter {
       }
     }
 
-    // High opacity, thick stroke – the layer blur softens it
     canvas.drawPath(
       path,
       Paint()
@@ -215,7 +263,6 @@ class _GrainientPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 120
         ..strokeCap = StrokeCap.round,
-      // No maskFilter here – blur is applied by the saveLayer
     );
   }
 

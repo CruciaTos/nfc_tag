@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../models/profile.dart';
@@ -5,14 +6,8 @@ import '../theme/app_theme.dart';
 import '../widgets/grainient_background.dart';
 import 'edit_profile_screen.dart';
 
-/// The app's launch screen and primary experience.
-///
-/// Shows the user's name/tagline plus a swipeable carousel of QR cards —
-/// one per [LinkEntry] in their profile. Each card encodes a real,
-/// standard URL (instagram.com/... or wa.me/...) that any camera app
-/// opens natively. No loading state once the profile is available; the
-/// calling code (main.dart) resolves the profile before this screen is
-/// shown, so opening the app feels instant.
+const double _cardRadius = 34.0;
+
 class ShareScreen extends StatefulWidget {
   final Profile profile;
   final ValueChanged<Profile> onProfileChanged;
@@ -81,17 +76,25 @@ class _ShareScreenState extends State<ShareScreen>
     final profile = widget.profile;
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: Colors.black.withOpacity(0.6),
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         centerTitle: true,
-        title: const _BrandMark(),
+        title: const Text(
+          'DZEN',
+          style: TextStyle(
+            fontSize: 30,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 3,
+            color: Colors.white,
+          ),
+        ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12, top: 4),
             child: IconButton(
-              icon: const Icon(Icons.edit_outlined, color: Colors.white),
+              icon: const Icon(Icons.person_outline, color: Colors.white),
               tooltip: 'Edit profile',
               onPressed: _openEditProfile,
             ),
@@ -121,56 +124,9 @@ class _ShareScreenState extends State<ShareScreen>
   }
 }
 
-/// The company wordmark shown at the top of the Share screen — a sleek,
-/// Dynamic Island‑style pill that carries the brand lockup with quiet
-/// confidence.
-class _BrandMark extends StatelessWidget {
-  const _BrandMark();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: RichText(
-        textAlign: TextAlign.center,
-        text: TextSpan(
-          children: [
-            TextSpan(
-              text: 'DZEN',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 3,
-                height: 1,
-                color: Colors.white.withOpacity(0.92),
-              ),
-            ),
-            TextSpan(
-              text: '  SVAYATTA',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 2.5,
-                height: 1,
-                color: Colors.white.withOpacity(0.92),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _ShareCard extends StatefulWidget {
   final Profile profile;
-
   const _ShareCard({required this.profile});
-
   @override
   State<_ShareCard> createState() => _ShareCardState();
 }
@@ -190,10 +146,6 @@ class _ShareCardState extends State<_ShareCard> {
     _syncColors();
   }
 
-  /// The carousel page to open on, based on the user's chosen Startup QR
-  /// (Profile.defaultLinkId). Falls back to the first card (index 0) when
-  /// no default is set or the saved id no longer matches a saved link —
-  /// this is the pre-existing behavior, left untouched as the fallback.
   int _defaultIndexFor(Profile profile) {
     final links = profile.validLinks;
     if (links.isEmpty) return 0;
@@ -262,7 +214,7 @@ class _ShareCardState extends State<_ShareCard> {
     }
 
     return SizedBox(
-      height: 560,
+      height: 600,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -286,8 +238,8 @@ class _ShareCardState extends State<_ShareCard> {
               },
             ),
           ),
-          const SizedBox(height: 20),
-          _DotIndicator(count: links.length, activeIndex: _currentIndex),
+          const SizedBox(height: 16),
+          _ModernPageIndicator(count: links.length, activeIndex: _currentIndex),
         ],
       ),
     );
@@ -307,57 +259,334 @@ class _SingleShareCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Solid black container replaces GlassCard
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 44),
-      decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-      ),
+    final isWhatsApp = link?.platform == LinkPlatform.whatsapp;
+
+    return _GradientWindowCard(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Name – ExtraBold
           Text(
             profile.fullName.isEmpty ? 'Your Name' : profile.fullName,
-            style: Theme.of(context).textTheme.headlineMedium,
+            style: const TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+            ),
             textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           if (profile.tagline.trim().isNotEmpty) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
+            // Tagline / Role – Light, 60% opacity
             Text(
               profile.tagline.trim(),
-              style: Theme.of(context).textTheme.bodyMedium,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w300,
+                color: Colors.white.withOpacity(0.60),
+              ),
               textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
-          const SizedBox(height: 36),
+          const SizedBox(height: 20),
           if (link != null) _QrCard(link: link!),
-          const SizedBox(height: 24),
-          Text(
-            link?.displayLabel ?? 'Scan to connect',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -0.3,
-                ),
-            textAlign: TextAlign.center,
-          ),
+          const SizedBox(height: 14),
+          // Platform label with monochrome icon – SemiBold
+          if (link != null)
+            _PlatformLabel(platform: link!.displayLabel),
           if (link != null) ...[
-            const SizedBox(height: 2),
-            Text(
-              link!.displayValue,
-              style: Theme.of(context).textTheme.bodyMedium,
+            const SizedBox(height: 4),
+            // Handle – Medium, 70% opacity, with phone icon for WhatsApp
+            if (isWhatsApp)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.call_outlined,
+                    size: 18,
+                    color: Colors.white70,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    link!.displayValue,
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white.withOpacity(0.70),
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              )
+            else
+              Text(
+                link!.displayValue,
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white.withOpacity(0.70),
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+          ] else
+            const Text(
+              'Scan to connect',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
               textAlign: TextAlign.center,
             ),
-          ],
         ],
       ),
     );
   }
 }
 
+/// Renders a platform name with a monochrome icon.
+class _PlatformLabel extends StatelessWidget {
+  final String platform;
+  const _PlatformLabel({required this.platform});
+
+  static IconData _iconFor(String platform) {
+    switch (platform.toLowerCase()) {
+      case 'instagram':
+        return Icons.camera_alt_outlined;
+      case 'whatsapp':
+        return Icons.chat_bubble_outline;
+      case 'twitter':
+      case 'x':
+        return Icons.alternate_email;
+      case 'linkedin':
+        return Icons.work_outline;
+      case 'youtube':
+        return Icons.play_circle_outline;
+      case 'facebook':
+        return Icons.facebook;
+      default:
+        return Icons.link;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(_iconFor(platform), size: 20, color: Colors.white70),
+        const SizedBox(width: 6),
+        Text(
+          platform,
+          style: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _GradientWindowCard extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  const _GradientWindowCard({
+    required this.child,
+    required this.padding,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(_cardRadius),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.20),
+            blurRadius: 60,
+            offset: const Offset(0, 25),
+          ),
+        ],
+        border: Border.all(
+          color: Colors.white.withOpacity(0.06),
+          width: 1,
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(_cardRadius),
+        child: Stack(
+          children: [
+            const Positioned.fill(child: GrainientBackground()),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Center(
+                  child: Container(
+                    width: 350,
+                    height: 350,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        center: Alignment.center,
+                        radius: 0.8,
+                        colors: [
+                          Colors.white.withOpacity(0.15),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(_cardRadius),
+                    gradient: RadialGradient(
+                      center: Alignment.center,
+                      radius: 0.85,
+                      colors: [
+                        Colors.transparent,
+                        Colors.white.withOpacity(0.08),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const Positioned.fill(child: _GridOverlay()),
+            const Positioned.fill(child: _NoiseOverlay()),
+            Padding(padding: padding, child: child),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Grid overlay – subtle network of lines
+// ---------------------------------------------------------------------------
+
+class _GridOverlay extends StatefulWidget {
+  const _GridOverlay();
+  @override
+  _GridOverlayState createState() => _GridOverlayState();
+}
+
+class _GridOverlayState extends State<_GridOverlay> {
+  late final _GridPainter _painter;
+  @override
+  void initState() {
+    super.initState();
+    _painter = _GridPainter();
+  }
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(painter: _painter);
+  }
+}
+
+class _GridPainter extends CustomPainter {
+  static const double _spacing = 40.0;
+  static const double _lineWidth = 0.5;
+  static final _lineColor = Colors.white.withOpacity(0.2);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = _lineColor
+      ..strokeWidth = _lineWidth
+      ..style = PaintingStyle.stroke;
+
+    double x = 0;
+    while (x <= size.width) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+      x += _spacing;
+    }
+
+    double y = 0;
+    while (y <= size.height) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+      y += _spacing;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ---------------------------------------------------------------------------
+// Noise overlay – almost invisible monochrome noise
+// ---------------------------------------------------------------------------
+
+class _NoiseOverlay extends StatefulWidget {
+  const _NoiseOverlay();
+  @override
+  _NoiseOverlayState createState() => _NoiseOverlayState();
+}
+
+class _NoiseOverlayState extends State<_NoiseOverlay> {
+  late final _NoisePainter _painter;
+  @override
+  void initState() {
+    super.initState();
+    _painter = _NoisePainter();
+  }
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(painter: _painter);
+  }
+}
+
+class _NoisePainter extends CustomPainter {
+  List<Offset>? _points;
+  final _random = Random(42);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (_points == null) {
+      _points = List.generate(
+        1200,
+        (_) => Offset(
+          _random.nextDouble() * size.width,
+          _random.nextDouble() * size.height,
+        ),
+      );
+    }
+
+    final paint = Paint()
+      ..color = Colors.white.withOpacity(0.03)
+      ..style = PaintingStyle.fill;
+
+    for (final point in _points!) {
+      canvas.drawCircle(point, 0.4, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ---------------------------------------------------------------------------
+// QR card – solid white, no gaps
+// ---------------------------------------------------------------------------
+
 class _QrCard extends StatelessWidget {
   final LinkEntry link;
-
   const _QrCard({required this.link});
 
   @override
@@ -375,17 +604,16 @@ class _QrCard extends StatelessWidget {
           );
         },
         child: Container(
-          padding: const EdgeInsets.all(22),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-            border: Border.all(color: Colors.black, width: 2),
+            borderRadius: BorderRadius.circular(_cardRadius),
           ),
           child: QrImageView(
             data: link.toUrl(),
             version: QrVersions.auto,
-            size: 204,
-            gapless: false,
+            size: 280,
+            gapless: true,
             eyeStyle: const QrEyeStyle(
               eyeShape: QrEyeShape.square,
               color: Colors.black,
@@ -401,11 +629,14 @@ class _QrCard extends StatelessWidget {
   }
 }
 
-class _DotIndicator extends StatelessWidget {
+// ---------------------------------------------------------------------------
+// Modern page indicator – active dash, inactive dots
+// ---------------------------------------------------------------------------
+
+class _ModernPageIndicator extends StatelessWidget {
   final int count;
   final int activeIndex;
-
-  const _DotIndicator({required this.count, required this.activeIndex});
+  const _ModernPageIndicator({required this.count, required this.activeIndex});
 
   @override
   Widget build(BuildContext context) {
@@ -416,12 +647,12 @@ class _DotIndicator extends StatelessWidget {
         return AnimatedContainer(
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOut,
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          width: isActive ? 18 : 6,
-          height: 6,
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          width: isActive ? 16 : 4,
+          height: 4,
           decoration: BoxDecoration(
             color: isActive ? Colors.white : Colors.white.withOpacity(0.3),
-            borderRadius: BorderRadius.circular(3),
+            borderRadius: BorderRadius.circular(2),
           ),
         );
       }),
@@ -429,40 +660,50 @@ class _DotIndicator extends StatelessWidget {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Empty state
+// ---------------------------------------------------------------------------
+
 class _EmptyState extends StatelessWidget {
   final VoidCallback onSetUp;
-
   const _EmptyState({required this.onSetUp});
 
   @override
   Widget build(BuildContext context) {
-    // Solid black container replaces GlassCard
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
       decoration: BoxDecoration(
         color: Colors.black,
-        borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+        borderRadius: BorderRadius.circular(_cardRadius),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           const Icon(Icons.bolt_rounded, size: 48, color: Colors.white),
           const SizedBox(height: 20),
-          Text(
+          const Text(
             'Set up your card',
-            style: Theme.of(context).textTheme.headlineMedium,
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 10),
-          Text(
+          const Text(
             'Add your Instagram and WhatsApp\nto start sharing instantly.',
-            style: Theme.of(context).textTheme.bodyMedium,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w400,
+              color: Colors.white70,
+            ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 28),
           FilledButton(
             onPressed: onSetUp,
-            child: const Text('Get Started'),
+            child: const Text('Get Started', style: TextStyle(fontSize: 18)),
           ),
         ],
       ),

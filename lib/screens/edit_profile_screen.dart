@@ -9,19 +9,9 @@ import '../models/profile.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
 
-/// A clean form for editing the local profile, including an open-ended
-/// list of links (Instagram, WhatsApp, etc.) — each becomes one
-/// swipeable QR card on the Share screen.
-///
-/// Returns the updated [Profile] via Navigator.pop when the user saves,
-/// or null if they back out without saving. Does not write to storage
-/// itself — ShareScreen's onProfileChanged callback (wired in main.dart)
-/// owns persistence, keeping this screen focused on form state only.
 class EditProfileScreen extends StatefulWidget {
   final Profile profile;
-
   const EditProfileScreen({super.key, required this.profile});
-
   @override
   State<EditProfileScreen> createState() => _EditProfileScreenState();
 }
@@ -37,7 +27,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   List<LinkEntry> _normalizeLinkIds(List<LinkEntry> links) {
     final normalized = <LinkEntry>[];
     final seenIds = <String>{};
-
     for (final link in links) {
       var safeId = link.id.trim();
       if (safeId.isEmpty || seenIds.contains(safeId)) {
@@ -47,7 +36,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         }
         safeId = 'link_$candidate';
       }
-
       seenIds.add(safeId);
       normalized.add(LinkEntry(
         id: safeId,
@@ -56,7 +44,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         label: link.label,
       ));
     }
-
     return normalized;
   }
 
@@ -68,7 +55,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _links = _normalizeLinkIds(List.of(widget.profile.links));
     _photoPath = widget.profile.photoPath;
     _defaultLinkId = widget.profile.defaultLinkId;
-
     if (_defaultLinkId != null &&
         !_links.any((link) => link.id == _defaultLinkId)) {
       _defaultLinkId = null;
@@ -91,10 +77,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       tagline: _taglineController.text.trim(),
       photoPath: _photoPath,
       links: _links,
-      // Drop a stale default (e.g. its link was removed this session)
-      // rather than persisting an id that no longer resolves to anything —
-      // Profile.defaultLink already falls back gracefully, but there's no
-      // reason to save a dangling reference when we can clean it up here.
       defaultLinkId:
           validIds.contains(_defaultLinkId) ? _defaultLinkId : null,
     );
@@ -112,14 +94,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         imageQuality: 85,
       );
       if (picked == null) return;
-
-      // Copy into app's own documents directory so the file persists
-      // even if the user removes it from the gallery/source location.
       final docsDir = await getApplicationDocumentsDirectory();
       final ext = picked.path.split('.').last;
       final savedPath = '${docsDir.path}/connect_profile_photo.$ext';
       await File(picked.path).copy(savedPath);
-
       if (!mounted) return;
       setState(() => _photoPath = savedPath);
     } catch (e) {
@@ -159,19 +137,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void _removeLink(String id) {
     setState(() {
       _links.removeWhere((l) => l.id == id);
-      // The default can't point at a link that no longer exists — clear
-      // it so the section reverts to "Automatic" rather than showing a
-      // selection that silently vanished.
       if (_defaultLinkId == id) {
         _defaultLinkId = null;
       }
     });
   }
 
-  /// Toggling entry point for setting the Startup QR directly from a link
-  /// row (double-tap or 3s hold) — picking the already-selected link again
-  /// clears it, reverting to "Automatic" (first saved link), since there's
-  /// no separate section anymore to explicitly choose that fallback.
   void _handleSetDefault(String id) {
     final wasDefault = _defaultLinkId == id;
     setState(() => _defaultLinkId = wasDefault ? null : id);
@@ -195,8 +166,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   void _previewCard() {
-    // "Preview Card" returns to the Share Screen with current edits applied,
-    // same as Save — there's no separate preview-only state to enter.
     Navigator.of(context).pop(_buildProfile());
   }
 
@@ -237,7 +206,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     TextField(
                       controller: _taglineController,
                       decoration: const InputDecoration(
-                        labelText: 'Tagline (optional)',
+                        labelText: 'Tag (optional)',
                         prefixIcon: Icon(Icons.short_text_rounded),
                       ),
                     ),
@@ -245,11 +214,27 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
               ),
               const SizedBox(height: 24),
+              // "Your Links" heading with + icon
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Text(
-                  'Your Links',
-                  style: Theme.of(context).textTheme.titleLarge,
+                child: Row(
+                  children: [
+                    Text(
+                      'Your Links',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.add_rounded),
+                      onPressed: _addLink,
+                      tooltip: 'Add Link',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      style: IconButton.styleFrom(
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 4),
@@ -276,7 +261,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     key: ValueKey(link.id),
                     padding: const EdgeInsets.only(bottom: 10),
                     child: _LinkRow(
-                      key: ValueKey(link.id),
                       link: link,
                       isDefault: link.id == _defaultLinkId,
                       onRemove: () => _removeLink(link.id),
@@ -284,12 +268,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ),
                   ),
                 ),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: _addLink,
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('Add Link'),
-              ),
               const SizedBox(height: 32),
               FilledButton(
                 onPressed: _save,
@@ -314,13 +292,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 }
 
-/// One saved link in the editable list — shows its platform icon, value,
-/// and a remove button. Pure black-and-white, no platform brand colors.
+/// One saved link in the editable list.
 ///
-/// Doubles as the Startup QR picker: double-tapping or holding the
-/// icon/label area for 3 seconds sets (or, if already set, clears) this
-/// link as the one shown first on launch. The remove (×) button sits
-/// outside that gesture area so it's never accidentally caught by it.
+/// Deletion now shows a confirmation dialog.
 class _LinkRow extends StatefulWidget {
   final LinkEntry link;
   final bool isDefault;
@@ -341,7 +315,6 @@ class _LinkRow extends StatefulWidget {
 
 class _LinkRowState extends State<_LinkRow> {
   static const _holdDuration = Duration(seconds: 3);
-
   Timer? _holdTimer;
   bool _isHolding = false;
 
@@ -355,8 +328,6 @@ class _LinkRowState extends State<_LinkRow> {
     });
   }
 
-  // Fires on a normal tap-up/tap-cancel/scroll-steal — anything short of
-  // completing the full 3s hold — so a quick tap on the row does nothing.
   void _cancelHold() {
     _holdTimer?.cancel();
     _holdTimer = null;
@@ -367,6 +338,31 @@ class _LinkRowState extends State<_LinkRow> {
   void dispose() {
     _holdTimer?.cancel();
     super.dispose();
+  }
+
+  /// Shows a confirmation dialog, then calls onRemove if confirmed.
+  Future<void> _confirmDelete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.grey.shade900,
+        title: const Text('Delete link?'),
+        content: Text('Are you sure you want to remove "${widget.link.displayLabel}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      widget.onRemove();
+    }
   }
 
   @override
@@ -420,11 +416,7 @@ class _LinkRowState extends State<_LinkRow> {
                                 ),
                                 if (widget.isDefault) ...[
                                   const SizedBox(width: 6),
-                                  const Icon(
-                                    Icons.bolt_rounded,
-                                    size: 15,
-                                    color: Colors.white,
-                                  ),
+                                  const Icon(Icons.bolt_rounded, size: 15, color: Colors.white),
                                 ],
                               ],
                             ),
@@ -443,10 +435,12 @@ class _LinkRowState extends State<_LinkRow> {
                 ),
               ),
             ),
+            // Trash/dustbin icon with confirmation
             IconButton(
-              icon: const Icon(Icons.close_rounded, size: 20),
+              icon: const Icon(Icons.delete_outline, size: 20),
               color: Colors.white.withOpacity(0.6),
-              onPressed: widget.onRemove,
+              onPressed: _confirmDelete,
+              tooltip: 'Delete link',
             ),
           ],
         ),
@@ -455,13 +449,10 @@ class _LinkRowState extends State<_LinkRow> {
   }
 }
 
-/// Bottom sheet for adding a new link: pick platform, enter value,
-/// optionally label it (so two Instagrams can be told apart).
+/// Bottom sheet for adding a new link.
 class _AddLinkSheet extends StatefulWidget {
   final String id;
-
   const _AddLinkSheet({required this.id});
-
   @override
   State<_AddLinkSheet> createState() => _AddLinkSheetState();
 }
@@ -515,8 +506,7 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
                   label: 'Instagram',
                   icon: Icons.camera_alt_outlined,
                   selected: _platform == LinkPlatform.instagram,
-                  onTap: () =>
-                      setState(() => _platform = LinkPlatform.instagram),
+                  onTap: () => setState(() => _platform = LinkPlatform.instagram),
                 ),
               ),
               const SizedBox(width: 12),
@@ -525,8 +515,7 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
                   label: 'WhatsApp',
                   icon: Icons.chat_bubble_outline_rounded,
                   selected: _platform == LinkPlatform.whatsapp,
-                  onTap: () =>
-                      setState(() => _platform = LinkPlatform.whatsapp),
+                  onTap: () => setState(() => _platform = LinkPlatform.whatsapp),
                 ),
               ),
             ],
@@ -570,7 +559,6 @@ class _PlatformChip extends StatelessWidget {
   final IconData icon;
   final bool selected;
   final VoidCallback onTap;
-
   const _PlatformChip({
     required this.label,
     required this.icon,
@@ -615,7 +603,6 @@ class _PhotoPicker extends StatelessWidget {
   final String? photoPath;
   final bool isLoading;
   final VoidCallback onTap;
-
   const _PhotoPicker({
     required this.photoPath,
     required this.isLoading,
@@ -625,7 +612,6 @@ class _PhotoPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasPhoto = photoPath != null && File(photoPath!).existsSync();
-
     return GestureDetector(
       onTap: isLoading ? null : onTap,
       child: AnimatedScale(
