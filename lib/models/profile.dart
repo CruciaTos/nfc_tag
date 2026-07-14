@@ -4,7 +4,7 @@
 /// shown on its card. [label] is optional and lets a user distinguish
 /// two entries of the same platform (e.g. "Insta — Personal" vs
 /// "Insta — Photography").
-enum LinkPlatform { instagram, whatsapp }
+enum LinkPlatform { instagram, whatsapp, website }
 
 class LinkEntry {
   final String id;
@@ -36,12 +36,24 @@ class LinkEntry {
         // wa.me expects digits only, no symbols/spaces/leading +.
         final digits = v.replaceAll(RegExp(r'[^0-9]'), '');
         return 'https://wa.me/$digits';
+      case LinkPlatform.website:
+        // Hardcoded — this entry only ever points at one destination, so
+        // there's nothing for the user to type and nothing that can go
+        // stale in [value].
+        return 'https://svayatta.in';
     }
   }
 
   String get displayLabel {
     if (label != null && label!.trim().isNotEmpty) return label!.trim();
-    return platform == LinkPlatform.instagram ? 'Instagram' : 'WhatsApp';
+    switch (platform) {
+      case LinkPlatform.instagram:
+        return 'Instagram';
+      case LinkPlatform.whatsapp:
+        return 'WhatsApp';
+      case LinkPlatform.website:
+        return 'Svayatta';
+    }
   }
 
   /// A human-readable form of the actual handle/number — shown alongside
@@ -60,6 +72,8 @@ class LinkEntry {
         return '@${v.replaceFirst('@', '')}';
       case LinkPlatform.whatsapp:
         return v;
+      case LinkPlatform.website:
+        return 'svayatta.in';
     }
   }
 

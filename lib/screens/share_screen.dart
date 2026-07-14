@@ -2,8 +2,11 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../models/profile.dart';
+import '../services/nfc_service.dart';
+import '../services/update_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/grainient_background.dart';
+import '../widgets/update_dialog.dart';
 import 'edit_profile_screen.dart';
 
 const double _cardRadius = 34.0;
@@ -29,6 +32,9 @@ class _ShareScreenState extends State<ShareScreen>
   late final Animation<Offset> _slide;
   late final Animation<double> _scale;
 
+  final NfcService _nfcService = NfcService();
+  bool _isWritingNfc = false;
+
   @override
   void initState() {
     super.initState();
@@ -48,10 +54,21 @@ class _ShareScreenState extends State<ShareScreen>
       CurvedAnimation(parent: _entrance, curve: Curves.easeOutCubic),
     );
     _entrance.forward();
+    // Checked once per app open, after the first frame so the share card
+    // is already visible before any prompt could appear on top of it.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeCheckForUpdate());
+  }
+
+  Future<void> _maybeCheckForUpdate() async {
+    final info = await UpdateService().checkForUpdate();
+    if (info != null && mounted) {
+      showUpdateSheet(context, info);
+    }
   }
 
   @override
   void dispose() {
+    _nfcService.stopSession();
     _entrance.dispose();
     super.dispose();
   }
@@ -118,9 +135,19 @@ class _ShareScreenState extends State<ShareScreen>
                       position: _slide,
                       child: ScaleTransition(
                         scale: _scale,
-                        child: profile.isEmpty
-                            ? _EmptyState(onSetUp: _openEditProfile)
-                            : _ShareCard(profile: profile),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            profile.isEmpty
+                                ? _EmptyState(onSetUp: _openEditProfile)
+                                : _ShareCard(profile: profile),
+                            if (!profile.isEmpty && profile.defaultLink != null)
+                              _NfcWriteButton(
+                                isWriting: _isWritingNfc,
+                                onPressed: _writeToNfc,
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -131,6 +158,42 @@ class _ShareScreenState extends State<ShareScreen>
         ),
       ),
     );
+  }
+
+  Future<void> _writeToNfc() async {
+    final link = widget.profile.defaultLink;
+    if (link == null) return;
+
+    setState(() => _isWritingNfc = true);
+
+    final error = await _nfcService.writeProfileUrl(link.toUrl());
+
+    if (!mounted) return;
+    setState(() => _isWritingNfc = false);
+
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error),
+          backgroundColor: Colors.red.shade800,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('NFC tag written successfully!'),
+          backgroundColor: Colors.green.shade800,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+    }
   }
 }
 
@@ -635,6 +698,78 @@ class _ModernPageIndicator extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
+// NFC write button
+// ---------------------------------------------------------------------------
+
+class _NfcWriteButton extends StatelessWidget {
+  final bool isWriting;
+  final VoidCallback onPressed;
+
+  const _NfcWriteButton({
+    required this.isWriting,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 24),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isWriting
+                ? Colors.white.withOpacity(0.4)
+                : Colors.white.withOpacity(0.15),
+            width: 1,
+          ),
+          color: Colors.white.withOpacity(isWriting ? 0.08 : 0.04),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: isWriting ? null : onPressed,
+            borderRadius: BorderRadius.circular(20),
+            splashColor: Colors.white.withOpacity(0.08),
+            highlightColor: Colors.white.withOpacity(0.04),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isWriting)
+                    const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  else
+                    const Icon(Icons.nfc, color: Colors.white, size: 22),
+                  const SizedBox(width: 12),
+                  Text(
+                    isWriting ? 'Tap your NFC tag…' : 'Write to NFC Tag',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white.withOpacity(isWriting ? 0.7 : 1.0),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Empty state
 // ---------------------------------------------------------------------------
 
@@ -666,7 +801,7 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           const Text(
-            'Add your Instagram and WhatsApp\nto start sharing instantly.',
+            'Add your Instagram, WhatsApp, or Website\nto start sharing instantly.',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w400,

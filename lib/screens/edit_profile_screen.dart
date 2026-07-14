@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/profile.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
+import '../widgets/update_dialog.dart';
 
 class EditProfileScreen extends StatefulWidget {
   final Profile profile;
@@ -251,7 +252,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   child: Text(
-                    'No links yet. Add Instagram, WhatsApp, or more —\neach becomes its own QR you can swipe between.',
+                    'No links yet. Add Instagram, WhatsApp, or your Website —\neach becomes its own QR you can swipe between.',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                 )
@@ -284,6 +285,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   child: Text('Preview Card', textAlign: TextAlign.center),
                 ),
               ),
+              const SizedBox(height: 28),
+              const Center(child: VersionFooter()),
             ],
           ),
         ),
@@ -367,9 +370,11 @@ class _LinkRowState extends State<_LinkRow> {
 
   @override
   Widget build(BuildContext context) {
-    final icon = widget.link.platform == LinkPlatform.instagram
-        ? Icons.camera_alt_outlined
-        : Icons.chat_bubble_outline_rounded;
+    final icon = switch (widget.link.platform) {
+      LinkPlatform.instagram => Icons.camera_alt_outlined,
+      LinkPlatform.whatsapp => Icons.chat_bubble_outline_rounded,
+      LinkPlatform.website => Icons.language_rounded,
+    };
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
@@ -458,6 +463,10 @@ class _AddLinkSheet extends StatefulWidget {
 }
 
 class _AddLinkSheetState extends State<_AddLinkSheet> {
+  // svayatta.in is the only website this card offers — hardcoded rather
+  // than a free-text field, since there's nothing for the user to type.
+  static const _websiteValue = 'svayatta.in';
+
   LinkPlatform _platform = LinkPlatform.instagram;
   final _valueController = TextEditingController();
   final _labelController = TextEditingController();
@@ -469,8 +478,23 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
     super.dispose();
   }
 
+  void _selectPlatform(LinkPlatform platform) {
+    setState(() {
+      _platform = platform;
+      if (platform == LinkPlatform.website) {
+        _valueController.text = _websiteValue;
+      } else if (_valueController.text == _websiteValue) {
+        // Switching away from Website — don't leave its auto-filled
+        // value sitting in the Instagram/WhatsApp field.
+        _valueController.clear();
+      }
+    });
+  }
+
   void _submit() {
-    final value = _valueController.text.trim();
+    final value = _platform == LinkPlatform.website
+        ? _websiteValue
+        : _valueController.text.trim();
     if (value.isEmpty) return;
     Navigator.of(context).pop(
       LinkEntry(
@@ -506,7 +530,7 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
                   label: 'Instagram',
                   icon: Icons.camera_alt_outlined,
                   selected: _platform == LinkPlatform.instagram,
-                  onTap: () => setState(() => _platform = LinkPlatform.instagram),
+                  onTap: () => _selectPlatform(LinkPlatform.instagram),
                 ),
               ),
               const SizedBox(width: 12),
@@ -515,24 +539,70 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
                   label: 'WhatsApp',
                   icon: Icons.chat_bubble_outline_rounded,
                   selected: _platform == LinkPlatform.whatsapp,
-                  onTap: () => setState(() => _platform = LinkPlatform.whatsapp),
+                  onTap: () => _selectPlatform(LinkPlatform.whatsapp),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _PlatformChip(
+                  label: 'Website',
+                  icon: Icons.language_rounded,
+                  selected: _platform == LinkPlatform.website,
+                  onTap: () => _selectPlatform(LinkPlatform.website),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 20),
-          TextField(
-            controller: _valueController,
-            autofocus: true,
-            keyboardType: _platform == LinkPlatform.whatsapp
-                ? TextInputType.phone
-                : TextInputType.url,
-            decoration: InputDecoration(
-              labelText: _platform == LinkPlatform.instagram
-                  ? 'Instagram username or URL'
-                  : 'WhatsApp phone number',
+          if (_platform == LinkPlatform.website)
+            // Nothing to type — this platform only ever points at
+            // svayatta.in, so show that plainly instead of an empty field.
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.link_rounded,
+                    color: Colors.white.withOpacity(0.6),
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'svayatta.in',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    'Fixed',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.4),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            TextField(
+              controller: _valueController,
+              autofocus: true,
+              keyboardType: _platform == LinkPlatform.whatsapp
+                  ? TextInputType.phone
+                  : TextInputType.url,
+              decoration: InputDecoration(
+                labelText: _platform == LinkPlatform.instagram
+                    ? 'Instagram username or URL'
+                    : 'WhatsApp phone number',
+              ),
             ),
-          ),
           const SizedBox(height: 16),
           TextField(
             controller: _labelController,

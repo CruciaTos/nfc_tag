@@ -16,6 +16,15 @@ List<Color> backgroundColorsForPlatform(LinkPlatform? platform) {
       ];
     case LinkPlatform.whatsapp:
       return const [Color(0xFF00A884), Color(0xFF075E54)];
+    case LinkPlatform.website:
+      // svayatta.in's own declared theme colour (#000b12) as the anchor,
+      // graduating up through two deeper steel/slate blues — keeps the
+      // site's moody, near-black identity rather than inventing a new one.
+      return const [
+        Color(0xFF000B12), // Svayatta's theme-color meta tag
+        Color.fromARGB(255, 7, 13, 90), // steel blue
+        Color.fromARGB(255, 25, 37, 201), // slate blue
+      ];
     case null:
       return const [Color(0xFFCCCCCC), Color(0xFF444444)];
   }

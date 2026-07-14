@@ -20,7 +20,8 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      // Global app typeface. Setting it here — rather than passing a
+      // Global app typeface. Setting it 
+      //here — rather than passing a
       // fontFamily to individual TextStyles — makes every screen use
       // Zaslia by default, including text that reads its style straight
       // off the theme (textTheme.*) and any inline TextStyle that

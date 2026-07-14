@@ -44,7 +44,7 @@ class _ConnectAppState extends State<ConnectApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Connect',
+      title: 'DzenConnect',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.theme,
       // The grain/gradient background lives here, not inside individual
